@@ -732,3 +732,115 @@ body {
     border-radius: 4px;
     margin-left: 6px;
 }
+
+/* 批次趋势视图 */
+.trend-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+.chart-container-sm {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    background: white;
+}
+.chart-container-sm h5 {
+    font-size: 13px;
+    color: var(--primary);
+    margin-bottom: 8px;
+}
+.chart-container-sm canvas {
+    width: 100% !important;
+    height: 220px !important;
+}
+.trend-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+.trend-alert {
+    padding: 10px 14px;
+    border-radius: 6px;
+    border-left: 4px solid var(--danger);
+    background: #fef2f2;
+    color: var(--danger);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+.trend-alert.warn {
+    border-left-color: var(--warning);
+    background: #fffbeb;
+    color: var(--warning);
+}
+.trend-alert .ta-time {
+    color: var(--text-light);
+    font-size: 12px;
+    white-space: nowrap;
+}
+.trend-alert-ok {
+    padding: 12px 14px;
+    border-radius: 6px;
+    border-left: 4px solid var(--success);
+    background: #f0fdf4;
+    color: var(--success);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* 批次对比缩略图网格 */
+.cmp-thumb-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+}
+.cmp-thumb {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    background: #fff;
+}
+.cmp-thumb .ct-title {
+    font-size: 11px;
+    color: var(--text-light);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.cmp-thumb canvas {
+    width: 100% !important;
+    height: 110px !important;
+}
+.cmp-batch-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.cmp-btn {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    text-align: center;
+}
+.cmp-btn:hover { background: #f1f5f9; }
+.cmp-btn.cmp-primary {
+    background: var(--primary-light);
+    color: white;
+    border-color: var(--primary-light);
+}
+.cmp-btn.cmp-primary:hover { background: var(--primary); }

@@ -69,8 +69,33 @@
             <h2>🔍 批次对比视图 <span id="compare-badge" class="badge"></span>
                 <button id="close-compare" class="h-btn h-btn-danger" style="float:right;">✕ 关闭</button>
             </h2>
-            <p class="muted" style="margin-bottom:16px;">横向对比各批次的 GRR、ndc、EV、AV、PV 与最终判定，一眼识别批次波动。</p>
+            <p class="muted" style="margin-bottom:16px;">横向对比各批次的 GRR、ndc、EV、AV、PV、方差贡献、均值趋势和控制图表现，一眼识别变差批次。</p>
             <div id="compare-content"></div>
+        </section>
+
+        <section id="trend-panel" class="card">
+            <h2>📈 批次趋势视图
+                <button id="refresh-trend" class="h-btn h-btn-primary" style="float:right;">🔄 刷新趋势</button>
+            </h2>
+            <p class="muted" style="margin-bottom:16px;">按保存时间追踪量具表现，红色三角 ▲ 标记判定等级恶化的节点（如可接受→边缘/不合格）。</p>
+            <div id="trend-charts">
+                <div class="trend-charts-grid">
+                    <div class="chart-container-sm">
+                        <h5>%GRR 趋势（越低越好，<10% 绿线）</h5>
+                        <canvas id="trend-grr"></canvas>
+                    </div>
+                    <div class="chart-container-sm">
+                        <h5>ndc 区分度趋势（越高越好，≥5 绿线）</h5>
+                        <canvas id="trend-ndc"></canvas>
+                    </div>
+                    <div class="chart-container-sm">
+                        <h5>EV / AV / PV 分解趋势 (σ)</h5>
+                        <canvas id="trend-evavpv"></canvas>
+                    </div>
+                </div>
+                <div id="trend-empty" class="history-empty hidden">暂无历史记录，保存几次分析后可查看量具表现趋势。</div>
+                <div id="trend-alerts" class="trend-alerts"></div>
+            </div>
         </section>
 
         <section id="results" class="results hidden">

@@ -1,10 +1,12 @@
 /* =========================================================
-   MSA / Gauge R&R Analysis - v3.0
+   MSA / Gauge R&R Analysis - v3.1
    =========================================================
    统一判定逻辑：所有模块调用 getVerdict(r)
    50+ 零件 ndc 校准：采用 ANOVA-PV 与 标准差法融合
-   批次对比：多选 2-3 条历史并排展示
-   CSV/Excel 导出：4 个 CSV 打包成 ZIP
+   批次对比：多选 2-3 条历史，指标卡+缩略图+跳转完整报告
+   批次趋势：按时间追踪 %GRR、ndc、EV/AV/PV，标注变差节点
+   INVALID 判定规则增强：PV/TV < 10% 也视为样本不适合分析
+   CSV/Excel 导出：4 个 CSV 打包成 ZIP，无效样本统一 N/A
    ========================================================= */
 
 /* ---------- 控制图常数 ---------- */
@@ -94,10 +96,15 @@ function getVerdict(r) {
     // 规则1：整体几乎无变异 → 样本不合适
     if ((r.totalStd || 0) < 1e-10) return VERDICT.INVALID;
     // 规则2：零件间几乎无差异 → PV≈0 会让 %GRR 虚高，结果不可信
-    if ((r.anova && r.anova.PV_anova || 0) < 1e-10) return VERDICT.INVALID;
+    const PV = r.anova ? (r.anova.PV_final || r.anova.PV_anova || 0) : 0;
+    if (PV < 1e-10) return VERDICT.INVALID;
+    // 规则3：PV占TV比例低于10% → 零件间差异远小于测量系统波动，
+    //        样本未能覆盖过程变异，判定为样本不适合分析（AIAG推荐）
+    const TV = r.anova ? (r.anova.TV_final || r.anova.TV_anova || 0) : 0;
+    if (TV > 0 && (PV * PV) / (TV * TV) < 0.10) return VERDICT.INVALID;
     const grr = r.anova ? r.anova.percentGRR_anova : 0;
     const ndc = r.ndc || 0;
-    // 规则3：AIAG 分级
+    // 规则4：AIAG 分级
     if (grr < 10 && ndc >= 5) return VERDICT.PASS;
     if (grr < 30 && ndc >= 5) return VERDICT.MARGINAL;
     return VERDICT.UNACCEPT;
@@ -389,6 +396,13 @@ function calculateMSA() {
         },
         control: { UCL_R, LCL_R, Rbar, UCL_Xbar: UCL_X, LCL_Xbar: LCL_X, grandMean, A2, D3, D4 }
     };
+    // 最后补充样本覆盖度警告（需依赖已计算的 PV_final/TV_final）
+    if (TV_final > 0 && PV_final > 0 && (PV_final * PV_final) / (TV_final * TV_final) < 0.10) {
+        const exist = warnings.some(w => /零件间/.test(w.text));
+        if (!exist) {
+            warnings.push({ level: 'warn', text: `<strong>零件差异覆盖不足</strong>（零件变异仅占总变异的 ${round(percentPV_final, 1)}%，低于 10%）。样本间差异远小于测量系统波动，<strong>本次结果判定为"无法判定"</strong>，建议扩大取样范围（覆盖过程 ±3σ）后重做 MSA。` });
+        }
+    }
     r.verdict = getVerdict(r);
     return r;
 }
@@ -975,6 +989,7 @@ function saveCurrentResult() {
     while (hist.length > MAX_HISTORY) hist.pop();
     setHistory(hist);
     renderHistoryList();
+    try { renderTrendView(); } catch (_) {}
     alert('✓ 已保存到历史记录（本地浏览器）。');
 }
 
@@ -1030,17 +1045,33 @@ function renderCompareView() {
         const d = new Date(h.time);
         const ndcTxt = v.code === 'INVALID' ? '—' : (r.ndc >= 999 ? '999+' : r.ndc);
         const grrTxt = v.code === 'INVALID' ? '—' : round(r.anova.percentGRR_anova, 2) + '%';
+        const evTxt = v.code === 'INVALID' ? '—' : round(r.anova.EV_anova, 4);
+        const avTxt = v.code === 'INVALID' ? '—' : round(r.anova.AV_anova, 4);
+        const pvTxt = v.code === 'INVALID' ? '—' : round(r.anova.PV_final, 4);
+        const tolTxt = (v.code === 'INVALID' || r.percentGRR_tol === null) ? '—' : round(r.percentGRR_tol, 2) + '%';
+
         return `<div class="compare-card ${cls}">
             ${tag}
             <h4>${h.name || '未命名'}</h4>
             <div class="c-sub">${d.toLocaleString('zh-CN')} · 👷${h.numOps} 🔩${h.numParts} 🔁${h.numTrials}${h.tolerance ? ' 📏'+h.tolerance : ''}</div>
             <div class="c-metric"><span class="c-label">%GRR (研究变异)</span><span class="c-value">${grrTxt}</span></div>
             <div class="c-metric"><span class="c-label">ndc 区分度</span><span class="c-value">${ndcTxt}</span></div>
-            <div class="c-metric"><span class="c-label">重复性 EV</span><span class="c-value">${round(r.anova.EV_anova, 4)}</span></div>
-            <div class="c-metric"><span class="c-label">再现性 AV</span><span class="c-value">${round(r.anova.AV_anova, 4)}</span></div>
-            <div class="c-metric"><span class="c-label">零件变异 PV</span><span class="c-value">${round(r.anova.PV_final, 4)}</span></div>
-            <div class="c-metric"><span class="c-label">%GRR (公差)</span><span class="c-value">${r.percentGRR_tol !== null ? round(r.percentGRR_tol, 2) + '%' : '—'}</span></div>
+            <div class="c-metric"><span class="c-label">重复性 EV</span><span class="c-value">${evTxt}</span></div>
+            <div class="c-metric"><span class="c-label">再现性 AV</span><span class="c-value">${avTxt}</span></div>
+            <div class="c-metric"><span class="c-label">零件变异 PV</span><span class="c-value">${pvTxt}</span></div>
+            <div class="c-metric"><span class="c-label">%GRR (公差)</span><span class="c-value">${tolTxt}</span></div>
             <div class="c-verdict ${v.cls}">${v.label}</div>
+
+            <div class="cmp-thumb-grid">
+                <div class="cmp-thumb"><div class="ct-title">① 方差贡献率</div><canvas id="cmp-pie-${i}"></canvas></div>
+                <div class="cmp-thumb"><div class="ct-title">② 均值交叉图 (X̄ by Part)</div><canvas id="cmp-xbar-${i}"></canvas></div>
+                <div class="cmp-thumb"><div class="ct-title">③ R 控制图 (极差)</div><canvas id="cmp-rctrl-${i}"></canvas></div>
+            </div>
+
+            <div class="cmp-batch-actions">
+                <button class="cmp-btn cmp-primary" data-jump="${h.id}">📄 跳到完整报告</button>
+                <button class="cmp-btn" data-delete="${h.id}">🗑 删除此批次</button>
+            </div>
         </div>`;
     }).join('');
 
@@ -1058,7 +1089,119 @@ function renderCompareView() {
         <div class="compare-grid">${cards}</div>
         <div class="compare-charts">${chartSpecs.map(mkBarCanvas).join('')}</div>`;
 
-    // 绘制 3 个对比图
+    // 为每个批次绘制缩略图（饼图/均值交叉/R控制图）
+    items.forEach((it, i) => {
+        const r = it.r, v = it.r.verdict;
+
+        // 缩略图1：方差贡献饼图
+        try {
+            const pieCtx = document.getElementById(`cmp-pie-${i}`);
+            if (pieCtx && v.code !== 'INVALID') {
+                compareCharts.push(new Chart(pieCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['EV 重复性', 'AV 再现性', 'PV 零件'],
+                        datasets: [{
+                            data: [round(r.anova.percentEV_anova, 2), round(r.anova.percentAV_anova, 2), round(r.anova.percentPV_anova, 2)],
+                            backgroundColor: ['#ef4444', '#f59e0b', '#10b981']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10 } },
+                            tooltip: { callbacks: { label: c => `${c.label}: ${c.parsed}%` } }
+                        }
+                    }
+                }));
+            } else if (pieCtx) {
+                pieCtx.parentNode.innerHTML = '<div class="ct-title">① 方差贡献率</div><div style="padding:22px 0;text-align:center;color:#4338ca;font-size:12px;font-weight:600;">⚠ 样本不适合分析，贡献率无法判定</div>';
+            }
+        } catch (_) {}
+
+        // 缩略图2：均值交叉图（按零件）
+        try {
+            const xbCtx = document.getElementById(`cmp-xbar-${i}`);
+            if (xbCtx && v.code !== 'INVALID') {
+                const partLabels = r.partMeans.map((_, j) => `P${j + 1}`);
+                const opDatasets = r.opPartMeans.map((opm, oi) => ({
+                    label: '测量员 ' + String.fromCharCode(65 + oi),
+                    data: opm,
+                    borderColor: ['#3b82f6', '#ef4444', '#10b981', '#8b5cf6', '#f97316'][oi % 5],
+                    backgroundColor: 'transparent',
+                    borderWidth: 1.5,
+                    pointRadius: 2,
+                    tension: 0.1
+                }));
+                compareCharts.push(new Chart(xbCtx, {
+                    type: 'line',
+                    data: { labels: partLabels, datasets: opDatasets },
+                    options: { responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } }
+                    }
+                }));
+            } else if (xbCtx) {
+                xbCtx.parentNode.innerHTML = '<div class="ct-title">② 均值交叉图 (X̄ by Part)</div><div style="padding:22px 0;text-align:center;color:#4338ca;font-size:12px;font-weight:600;">⚠ 样本无差异，无法绘制</div>';
+            }
+        } catch (_) {}
+
+        // 缩略图3：R 控制图（极差）
+        try {
+            const rcCtx = document.getElementById(`cmp-rctrl-${i}`);
+            if (rcCtx && v.code !== 'INVALID') {
+                const rctrlLbl = [];
+                const rctrlVals = [];
+                r.controlR.forEach((row, o) => {
+                    row.forEach((rv, j) => {
+                        rctrlLbl.push(`${String.fromCharCode(65+o)}-${j+1}`);
+                        rctrlVals.push(rv);
+                    });
+                });
+                compareCharts.push(new Chart(rcCtx, {
+                    type: 'line',
+                    data: { labels: rctrlLbl, datasets: [
+                        { label: 'R', data: rctrlVals, borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 2, showLine: false },
+                        { label: 'UCL', data: rctrlLbl.map(() => r.rangeUCL), borderColor: '#ef4444', borderDash: [4, 3], pointRadius: 0, borderWidth: 1 },
+                        { label: 'CL', data: rctrlLbl.map(() => r.rangeCL), borderColor: '#10b981', pointRadius: 0, borderWidth: 1 }
+                    ] },
+                    options: { responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { ticks: { display: false } }, y: { ticks: { font: { size: 9 } } } }
+                    }
+                }));
+            } else if (rcCtx) {
+                rcCtx.parentNode.innerHTML = '<div class="ct-title">③ R 控制图 (极差)</div><div style="padding:22px 0;text-align:center;color:#4338ca;font-size:12px;font-weight:600;">⚠ 样本无波动，无法绘制</div>';
+            }
+        } catch (_) {}
+    });
+
+    // 绑定跳转/删除按钮
+    document.querySelectorAll('[data-jump]').forEach(b => {
+        b.addEventListener('click', () => {
+            const hid = b.getAttribute('data-jump');
+            const h = getHistory().find(x => x.id == hid);
+            if (!h) return;
+            loadHistoryItem(h);
+            // 立即自动计算并滚动到结果区
+            setTimeout(() => {
+                doCalculate();
+                document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+            }, 120);
+        });
+    });
+    document.querySelectorAll('[data-delete]').forEach(b => {
+        b.addEventListener('click', () => {
+            const hid = b.getAttribute('data-delete');
+            if (!confirm('确定要删除该历史记录吗？')) return;
+            deleteHistory(hid);
+            historySelection.delete(hid);
+            renderHistoryList();
+            renderCompareView();
+            renderTrendView();
+        });
+    });
+
+    // 绘制 3 个对比柱状图
     const grrData = items.map(it => it.r.verdict.code === 'INVALID' ? null : round(it.r.anova.percentGRR_anova, 2));
     compareCharts.push(new Chart(document.getElementById('cmp-grr'), {
         type: 'bar',
@@ -1086,12 +1229,166 @@ function renderCompareView() {
     compareCharts.push(new Chart(document.getElementById('cmp-evavpv'), {
         type: 'bar',
         data: { labels, datasets: [
-            { label: 'EV', data: items.map(it => round(it.r.anova.EV_anova, 4)), backgroundColor: '#ef4444' },
-            { label: 'AV', data: items.map(it => round(it.r.anova.AV_anova, 4)), backgroundColor: '#f59e0b' },
-            { label: 'PV', data: items.map(it => round(it.r.anova.PV_final, 4)), backgroundColor: '#10b981' }
+            { label: 'EV', data: items.map(it => it.r.verdict.code === 'INVALID' ? 0 : round(it.r.anova.EV_anova, 4)), backgroundColor: '#ef4444' },
+            { label: 'AV', data: items.map(it => it.r.verdict.code === 'INVALID' ? 0 : round(it.r.anova.AV_anova, 4)), backgroundColor: '#f59e0b' },
+            { label: 'PV', data: items.map(it => it.r.verdict.code === 'INVALID' ? 0 : round(it.r.anova.PV_final, 4)), backgroundColor: '#10b981' }
         ] },
         options: { responsive: true, maintainAspectRatio: false,
             scales: { x: { stacked: false }, y: { beginAtZero: true, title: { display: true, text: 'σ' } } }
+        }
+    }));
+}
+
+/* =========================================================
+   批次趋势视图（按保存时间追踪量具表现）
+   ========================================================= */
+let trendCharts = [];
+function renderTrendView() {
+    trendCharts.forEach(c => c && c.destroy && c.destroy());
+    trendCharts = [];
+    const list = getHistory().sort((a, b) => a.time - b.time);
+    const emptyDiv = document.getElementById('trend-empty');
+    const alertsDiv = document.getElementById('trend-alerts');
+
+    if (!list.length) {
+        emptyDiv.classList.remove('hidden');
+        alertsDiv.innerHTML = '';
+        ['trend-grr', 'trend-ndc', 'trend-evavpv'].forEach(id => {
+            const c = document.getElementById(id);
+            if (c) { const p = c.parentNode; if (p) p.innerHTML = `<h5>${p.querySelector('h5')?.innerText || ''}</h5><div style="padding:60px 0;text-align:center;color:#94a3b8;font-size:13px;">暂无数据</div>`; }
+        });
+        return;
+    }
+    emptyDiv.classList.add('hidden');
+
+    const labels = list.map(h => {
+        const d = new Date(h.time);
+        return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    });
+    const results = list.map(h => hydrateHistoryItem(h));
+
+    // 识别变差节点（PASS→MARGINAL/UNACCEPT 或 MARGINAL→UNACCEPT 或 INVALID→...）
+    const VERDICT_RANK = { INVALID: -1, PASS: 0, MARGINAL: 1, UNACCEPT: 2 };
+    const alerts = [];
+    const anomalyIdx = [];
+    for (let i = 1; i < results.length; i++) {
+        const prev = VERDICT_RANK[results[i - 1].verdict.code] ?? -1;
+        const curr = VERDICT_RANK[results[i].verdict.code] ?? -1;
+        const prevGRR = results[i - 1].verdict.code === 'INVALID' ? 0 : results[i - 1].anova.percentGRR_anova;
+        const currGRR = results[i].verdict.code === 'INVALID' ? 0 : results[i].anova.percentGRR_anova;
+        const grrJump = prevGRR > 0 && (currGRR - prevGRR) / prevGRR >= 0.25; // %GRR 上升 ≥25%
+        if (curr > prev && prev >= 0) {
+            alerts.push({ level: 'danger', idx: i, msg: `「${list[i].name || '未命名'}」判定恶化：${results[i - 1].verdict.short} → ${results[i].verdict.short}` });
+            anomalyIdx.push(i);
+        } else if (grrJump) {
+            alerts.push({ level: 'warn', idx: i, msg: `「${list[i].name || '未命名'}」%GRR 上升 ${Math.round((currGRR - prevGRR) / prevGRR * 100)}%（${round(prevGRR, 1)}% → ${round(currGRR, 1)}%）` });
+            anomalyIdx.push(i);
+        } else if (prev === -1 && curr > 0) {
+            alerts.push({ level: 'warn', idx: i, msg: `「${list[i].name || '未命名'}」首次获得有效判定：${results[i].verdict.short}` });
+        }
+    }
+    if (!alerts.length) {
+        alertsDiv.innerHTML = `<div class="trend-alert-ok">✓ 近 ${list.length} 次分析未发现明显量具恶化节点</div>`;
+    } else {
+        alertsDiv.innerHTML = alerts.map(a => {
+            const d = new Date(list[a.idx].time);
+            return `<div class="trend-alert ${a.level === 'warn' ? 'warn' : ''}">
+                <span>⚠ ${a.msg}</span>
+                <span class="ta-time">${d.toLocaleString('zh-CN')}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // 图1：%GRR 趋势
+    trendCharts.push(new Chart(document.getElementById('trend-grr'), {
+        type: 'line',
+        data: { labels, datasets: [
+            {
+                label: '%GRR (研究变异)',
+                data: results.map(r => r.verdict.code === 'INVALID' ? null : round(r.anova.percentGRR_anova, 2)),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59,130,246,0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.2,
+                spanGaps: true,
+                pointRadius: 3,
+                pointBackgroundColor: results.map((_, i) => anomalyIdx.includes(i) ? '#dc2626' : '#3b82f6'),
+                pointRadius: results.map((_, i) => anomalyIdx.includes(i) ? 6 : 3)
+            },
+            { label: '合格线 <10%', data: labels.map(() => 10), borderColor: '#10b981', borderDash: [6, 3], pointRadius: 0 },
+            { label: '不合格线 ≥30%', data: labels.map(() => 30), borderColor: '#ef4444', borderDash: [6, 3], pointRadius: 0 }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        title: items => {
+                            const i = items[0].dataIndex;
+                            return `${list[i].name || '未命名'}\n${new Date(list[i].time).toLocaleString('zh-CN')}`;
+                        }
+                    }
+                }
+            },
+            scales: { y: { beginAtZero: true, suggestedMax: 40, title: { display: true, text: '%GRR' } } }
+        }
+    }));
+
+    // 图2：ndc 趋势
+    trendCharts.push(new Chart(document.getElementById('trend-ndc'), {
+        type: 'line',
+        data: { labels, datasets: [
+            {
+                label: 'ndc 区分度',
+                data: results.map(r => r.verdict.code === 'INVALID' ? null : Math.min(r.ndc, 50)),
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139,92,246,0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.2,
+                spanGaps: true,
+                pointRadius: 3,
+                pointBackgroundColor: results.map((_, i) => anomalyIdx.includes(i) ? '#dc2626' : '#8b5cf6'),
+                pointRadius: results.map((_, i) => anomalyIdx.includes(i) ? 6 : 3)
+            },
+            { label: '合格线 ndc≥5', data: labels.map(() => 5), borderColor: '#10b981', borderDash: [6, 3], pointRadius: 0 }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        title: items => {
+                            const i = items[0].dataIndex;
+                            return `${list[i].name || '未命名'}\n${new Date(list[i].time).toLocaleString('zh-CN')}`;
+                        }
+                    }
+                }
+            },
+            scales: { y: { beginAtZero: true, suggestedMax: 20, title: { display: true, text: 'ndc' } } }
+        }
+    }));
+
+    // 图3：EV/AV/PV 分解趋势
+    trendCharts.push(new Chart(document.getElementById('trend-evavpv'), {
+        type: 'line',
+        data: { labels, datasets: [
+            { label: 'EV (重复性 σ)', data: results.map(r => r.verdict.code === 'INVALID' ? null : round(r.anova.EV_anova, 4)), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 2, fill: true, tension: 0.2, spanGaps: true, pointRadius: 2 },
+            { label: 'AV (再现性 σ)', data: results.map(r => r.verdict.code === 'INVALID' ? null : round(r.anova.AV_anova, 4)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 2, fill: true, tension: 0.2, spanGaps: true, pointRadius: 2 },
+            { label: 'PV (零件变异 σ)', data: results.map(r => r.verdict.code === 'INVALID' ? null : round(r.anova.PV_final, 4)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', borderWidth: 2, fill: true, tension: 0.2, spanGaps: true, pointRadius: 2 }
+        ] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        title: items => {
+                            const i = items[0].dataIndex;
+                            return `${list[i].name || '未命名'}\n${new Date(list[i].time).toLocaleString('zh-CN')}`;
+                        }
+                    }
+                }
+            },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'σ' } } }
         }
     }));
 }
@@ -1118,6 +1415,10 @@ async function exportCSV() {
 
     const r = currentResult;
     const a = r.anova, v = r.verdict;
+    const isInvalid = v.code === 'INVALID';
+    const na = 'N/A';
+    const pctVal = x => isInvalid ? na : (round(x, 2) + '%');
+    const numVal = x => isInvalid ? na : round(x, 6);
     const zip = new JSZip();
 
     /* Sheet1: 原始测量数据表 */
@@ -1125,64 +1426,72 @@ async function exportCSV() {
     for (let o = 0; o < r.numOps; o++) {
         for (let p = 0; p < r.numParts; p++) {
             for (let t = 0; t < r.numTrials; t++) {
-                const v = r.data[o][p][t];
-                if (typeof v === 'number' && isFinite(v))
-                    rawRows.push([p + 1, String.fromCharCode(65 + o), t + 1, v]);
+                const val = r.data[o][p][t];
+                if (typeof val === 'number' && isFinite(val))
+                    rawRows.push([p + 1, String.fromCharCode(65 + o), t + 1, val]);
             }
         }
     }
     zip.file('01_原始测量数据.csv', '\uFEFF' + toCSV(rawRows));
 
-    /* Sheet2: R&R 结果 */
+    /* Sheet2: R&R 结果（无效样本所有指标统一 N/A / 无法判定） */
     const rr = [];
     rr.push(['MSA/Gauge R&R 分析结果 — 依据 AIAG MSA 第四版']);
     rr.push([]);
     rr.push(['基本信息']);
     rr.push(['测量员', r.numOps, '零件数', r.numParts, '重复次数', r.numTrials]);
-    rr.push(['规格公差', r.tolerance || '', '总均值', round(r.grandMean, 6), '总体标准差', round(r.totalStd, 6)]);
+    rr.push(['规格公差', r.tolerance || '', '总均值', round(r.grandMean, 6), '总体标准差', isInvalid ? na : round(r.totalStd, 6)]);
     rr.push([]);
-    rr.push(['判定', v.label]);
-    rr.push([]);
+    rr.push(['最终判定', v.label, isInvalid ? '（请扩大样本覆盖范围后重新分析）' : '']);
+    if (isInvalid) {
+        rr.push([]);
+        rr.push(['说明', '零件间差异远小于测量系统波动（或样本完全无变异），本次分析结果不可信。']);
+        rr.push(['', '请选取能覆盖过程 ±3σ 变异范围的零件样本重新做 MSA。']);
+        rr.push([]);
+    }
     rr.push(['变异来源', 'SD (σ)', 'Var (σ²)', '%研究变异', r.tolerance ? '%公差' : '']);
-    rr.push(['重复性 EV', round(a.EV_anova, 6), round(a.EV_anova ** 2, 6), round(a.percentEV_anova, 2) + '%', r.tolerance ? round(r.percentEV_tol, 2) + '%' : '']);
-    rr.push(['再现性 AV (含交互)', round(a.AV_anova, 6), round(a.AV_anova ** 2, 6), round(a.percentAV_anova, 2) + '%', r.tolerance ? round(r.percentAV_tol, 2) + '%' : '']);
-    rr.push(['GRR 合计', round(a.GRR_anova, 6), round(a.GRR_anova ** 2, 6), round(a.percentGRR_anova, 2) + '%', r.tolerance ? round(r.percentGRR_tol, 2) + '%' : '']);
-    rr.push([`零件变异 PV${r.numParts >= 20 ? ' (融合估计)' : ''}`, round(a.PV_final, 6), round(a.PV_final ** 2, 6), round(a.percentPV_anova, 2) + '%', '']);
-    rr.push(['总变异 TV', round(a.TV_final, 6), round(a.TV_final ** 2, 6), '100%', '']);
+    rr.push(['重复性 EV', numVal(a.EV_anova), numVal(a.EV_anova ** 2), pctVal(a.percentEV_anova), r.tolerance ? (isInvalid ? na : round(r.percentEV_tol, 2) + '%') : '']);
+    rr.push(['再现性 AV (含交互)', numVal(a.AV_anova), numVal(a.AV_anova ** 2), pctVal(a.percentAV_anova), r.tolerance ? (isInvalid ? na : round(r.percentAV_tol, 2) + '%') : '']);
+    rr.push(['GRR 合计', numVal(a.GRR_anova), numVal(a.GRR_anova ** 2), isInvalid ? '无法判定' : (round(a.percentGRR_anova, 2) + '%'), r.tolerance ? (isInvalid ? '无法判定' : (round(r.percentGRR_tol, 2) + '%')) : '']);
+    rr.push([`零件变异 PV${r.numParts >= 20 ? ' (融合估计)' : ''}`, numVal(a.PV_final), numVal(a.PV_final ** 2), pctVal(a.percentPV_anova), '']);
+    rr.push(['总变异 TV', numVal(a.TV_final), numVal(a.TV_final ** 2), isInvalid ? na : '100%', '']);
     rr.push([]);
-    rr.push(['区分度 ndc', v.code === 'INVALID' ? '无法判定' : (r.ndc >= 999 ? '999+' : r.ndc), v.code === 'INVALID' ? '(样本不适合)' : (r.ndc >= 5 ? '合格' : '不合格')]);
+    rr.push(['区分度 ndc', isInvalid ? '无法判定' : (r.ndc >= 999 ? '999+' : r.ndc), isInvalid ? '（样本不适合分析，ndc计算无意义）' : (r.ndc >= 5 ? '合格' : '不合格')]);
     zip.file('02_RR结果与判定.csv', '\uFEFF' + toCSV(rr));
 
     /* Sheet3: ANOVA 方差分析表 */
     const ao = [];
     ao.push(['ANOVA 方差分析表 (α=0.05)']);
+    if (isInvalid) { ao.push([]); ao.push(['数据质量警告', v.label + '：ANOVA 各变异分量仅供参考，贡献率与判定不具备统计意义。']); }
     ao.push([]);
     ao.push(['来源', 'DF', 'SS', 'MS', 'F', 'F临界', '显著性', '方差分量']);
     const pS = a.F_parts > a.F_crit_parts, oS = a.F_ops > a.F_crit_ops, iS = a.F_interaction > a.F_crit_interaction;
-    ao.push(['零件 Parts', a.df_parts, round(a.SS_parts, 6), round(a.MS_parts, 6), round(a.F_parts, 4), round(a.F_crit_parts, 4), pS ? '显著' : '不显著', round(a.var_parts, 6)]);
-    ao.push(['测量员 Operators', a.df_ops, round(a.SS_ops, 6), round(a.MS_ops, 6), round(a.F_ops, 4), round(a.F_crit_ops, 4), oS ? '显著' : '不显著', round(a.var_ops, 6)]);
-    ao.push(['交互 Part×Op', a.df_interaction, round(a.SS_interaction, 6), round(a.MS_interaction, 6), round(a.F_interaction, 4), round(a.F_crit_interaction, 4), iS ? '显著' : '不显著', round(a.var_interaction, 6)]);
-    ao.push(['重复性 Repeatability', a.df_repeat, round(a.SS_repeat, 6), round(a.MS_repeat, 6), '', '', '', round(a.var_repeat, 6)]);
+    ao.push(['零件 Parts', a.df_parts, round(a.SS_parts, 6), round(a.MS_parts, 6), round(a.F_parts, 4), round(a.F_crit_parts, 4), isInvalid ? '样本不足' : (pS ? '显著' : '不显著'), isInvalid ? na : round(a.var_parts, 6)]);
+    ao.push(['测量员 Operators', a.df_ops, round(a.SS_ops, 6), round(a.MS_ops, 6), round(a.F_ops, 4), round(a.F_crit_ops, 4), isInvalid ? '样本不足' : (oS ? '显著' : '不显著'), isInvalid ? na : round(a.var_ops, 6)]);
+    ao.push(['交互 Part×Op', a.df_interaction, round(a.SS_interaction, 6), round(a.MS_interaction, 6), round(a.F_interaction, 4), round(a.F_crit_interaction, 4), isInvalid ? '样本不足' : (iS ? '显著' : '不显著'), isInvalid ? na : round(a.var_interaction, 6)]);
+    ao.push(['重复性 Repeatability', a.df_repeat, round(a.SS_repeat, 6), round(a.MS_repeat, 6), '', '', '', isInvalid ? na : round(a.var_repeat, 6)]);
     zip.file('03_ANOVA方差分析.csv', '\uFEFF' + toCSV(ao));
 
     /* Sheet4: 历史对比摘要 */
     const hist = getHistory();
     const comp = [['历史记录对比摘要（共 ' + hist.length + ' 条）']];
     comp.push([]);
-    comp.push(['ID', '名称', '时间', '测量员', '零件', '次数', '公差', '%GRR', 'ndc', '判定']);
+    comp.push(['ID', '名称', '时间', '测量员', '零件', '次数', '公差', '%GRR', 'ndc', '最终判定', '说明']);
     hist.forEach((h, i) => {
         const hr = buildResultFromHistory(h);
         const vv = hr.verdict;
         const d = new Date(h.time);
+        const hInvalid = vv.code === 'INVALID';
         comp.push([
             i + 1,
             h.name || '',
             d.toLocaleString('zh-CN'),
             h.numOps, h.numParts, h.numTrials,
             h.tolerance || '',
-            vv.code === 'INVALID' ? 'N/A' : round(hr.anova.percentGRR_anova, 2) + '%',
-            vv.code === 'INVALID' ? 'N/A' : (hr.ndc >= 999 ? '999+' : hr.ndc),
-            vv.label
+            hInvalid ? 'N/A' : round(hr.anova.percentGRR_anova, 2) + '%',
+            hInvalid ? 'N/A' : (hr.ndc >= 999 ? '999+' : hr.ndc),
+            vv.label,
+            hInvalid ? '样本不适合分析' : ''
         ]);
     });
     zip.file('04_历史对比摘要.csv', '\uFEFF' + toCSV(comp));
@@ -1191,8 +1500,8 @@ async function exportCSV() {
     const fn = `MSA_GRR_Export_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.zip`;
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fn; a.click();
+    const an = document.createElement('a');
+    an.href = url; an.download = fn; an.click();
     URL.revokeObjectURL(url);
 }
 
@@ -1324,8 +1633,8 @@ ${imgBlock(imgs.ctrlR, '图5 · R 控制图')}
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const fn = `MSA_GRR_Report_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.html`;
-    const a = document.createElement('a');
-    a.href = url; a.download = fn; a.click(); a.remove();
+    const linkEl = document.createElement('a');
+    linkEl.href = url; linkEl.download = fn; linkEl.click(); linkEl.remove();
     URL.revokeObjectURL(url);
 }
 
@@ -1360,6 +1669,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clear-selection').addEventListener('click', () => { historySelection.clear(); renderHistoryList(); });
     document.getElementById('close-compare').addEventListener('click', () => document.getElementById('compare-panel').classList.add('hidden'));
     document.getElementById('print-report').addEventListener('click', () => window.print());
+    document.getElementById('refresh-trend').addEventListener('click', renderTrendView);
 
     /* 导出下拉菜单 */
     const eb = document.getElementById('export-btn'), em = document.getElementById('export-menu');
@@ -1377,4 +1687,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     generateTable();
     renderHistoryList();
+    try { renderTrendView(); } catch (e) { /* 忽略首次图表未就绪错误 */ }
 });

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSA/Gauge R&R 测量系统分析工具</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1>MSA/Gauge R&amp;R 测量系统分析</h1>
+            <p class="subtitle">测量系统重复性与再现性分析工具 | AIAG标准</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h2>1. 数据录入</h2>
+            <div class="config-row">
+                <div class="form-group">
+                    <label for="operators">测量员数量</label>
+                    <input type="number" id="operators" min="2" max="10" value="3">
+                </div>
+                <div class="form-group">
+                    <label for="parts">零件数量</label>
+                    <input type="number" id="parts" min="2" max="50" value="10">
+                </div>
+                <div class="form-group">
+                    <label for="trials">每个零件测量次数</label>
+                    <input type="number" id="trials" min="2" max="10" value="3">
+                </div>
+                <div class="form-group">
+                    <label for="spec-tolerance">规格公差 (Tolerance)</label>
+                    <input type="number" id="spec-tolerance" step="any" placeholder="如 USL-LSL">
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button id="generate-table" class="btn btn-secondary">生成数据表</button>
+                </div>
+            </div>
+
+            <div id="data-entry" class="data-entry"></div>
+
+            <div class="action-row">
+                <button id="load-sample" class="btn btn-secondary">加载示例数据</button>
+                <button id="clear-data" class="btn btn-secondary">清空数据</button>
+                <button id="calculate" class="btn btn-primary">计算分析</button>
+            </div>
+        </section>
+
+        <section id="results" class="results hidden">
+            <div class="card">
+                <h2>2. 量具 R&amp;R 结果摘要</h2>
+                <div id="summary" class="summary-grid"></div>
+                <div id="decision" class="decision-box"></div>
+            </div>
+
+            <div class="card">
+                <h2>3. 方差分析表 (ANOVA)</h2>
+                <div id="anova-table" class="table-wrapper"></div>
+            </div>
+
+            <div class="card chart-card">
+                <h2>4. 方差贡献率饼图</h2>
+                <div class="chart-container">
+                    <canvas id="variance-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="card chart-card">
+                <h2>5. 测量员均值与极差交叉图</h2>
+                <div class="chart-container">
+                    <canvas id="xbar-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="range-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="card chart-card">
+                <h2>6. 测量过程控制图</h2>
+                <h3>X-bar 控制图 (按零件分组)</h3>
+                <div class="chart-container">
+                    <canvas id="xbar-control-chart"></canvas>
+                </div>
+                <h3>R 控制图 (极差)</h3>
+                <div class="chart-container">
+                    <canvas id="r-control-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>7. 区分度分析 (Number of Distinct Categories)</h2>
+                <div id="ndc-result" class="ndc-result"></div>
+            </div>
+
+            <div class="card">
+                <h2>8. AIAG 标准报告</h2>
+                <div id="report" class="report"></div>
+                <div class="action-row">
+                    <button id="print-report" class="btn btn-primary">打印/导出报告</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>MSA/Gauge R&amp;R Analysis Tool | Based on AIAG MSA 4th Edition</p>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

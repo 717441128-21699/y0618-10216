@@ -791,6 +791,15 @@ function setHistory(list) {
     catch (e) { alert('保存失败：' + e.message); }
 }
 
+/* 删除指定 id 的历史记录，同时清理已勾选状态 */
+function deleteHistory(id) {
+    const numId = +id;
+    const list = getHistory();
+    const filtered = list.filter(x => x.id !== numId);
+    setHistory(filtered);
+    historySelection.delete(numId);
+}
+
 /* 根据 flatData 恢复 r.verdict / r.anova 关键指标（用于历史列表展示） */
 function hydrateHistoryItem(h) {
     const data = [];
@@ -869,6 +878,11 @@ function hydrateHistoryItem(h) {
 
     const pctTolGRR = h.tolerance ? safeDiv(6 * GRR_anova, h.tolerance, 0) * 100 : null;
 
+    /* 控制图参数（与 calculateMSA 保持一致，供缩略图使用） */
+    const A2 = a2Approx(h.numTrials), D3 = d3Approx(h.numTrials), D4 = d4Approx(h.numTrials);
+    const UCL_R = D4 * Rbar, LCL_R = D3 * Rbar;
+    const UCL_X = grandMean + A2 * Rbar, LCL_X = grandMean - A2 * Rbar;
+
     const r = {
         numOps: h.numOps, numParts: h.numParts, numTrials: h.numTrials,
         totalStd, ndc, tolerance: h.tolerance,
@@ -880,7 +894,9 @@ function hydrateHistoryItem(h) {
             percentGRR_anova: percentGRR_final,
             percentPV_anova: percentPV_final
         },
-        operatorMeans, partMeans, cellMeans
+        operatorMeans, operatorRanges, partMeans, cellMeans, cellRanges,
+        Rbar, grandMean,
+        control: { UCL_R, LCL_R, Rbar, UCL_Xbar: UCL_X, LCL_Xbar: LCL_X, grandMean, A2, D3, D4 }
     };
     r.verdict = getVerdict(r);
     return r;
@@ -1118,12 +1134,12 @@ function renderCompareView() {
             }
         } catch (_) {}
 
-        // 缩略图2：均值交叉图（按零件）
+        // 缩略图2：均值交叉图（按零件）— cellMeans[o][p] = 测量员o在零件p的均值
         try {
             const xbCtx = document.getElementById(`cmp-xbar-${i}`);
-            if (xbCtx && v.code !== 'INVALID') {
+            if (xbCtx && v.code !== 'INVALID' && r.cellMeans && r.cellMeans.length) {
                 const partLabels = r.partMeans.map((_, j) => `P${j + 1}`);
-                const opDatasets = r.opPartMeans.map((opm, oi) => ({
+                const opDatasets = r.cellMeans.map((opm, oi) => ({
                     label: '测量员 ' + String.fromCharCode(65 + oi),
                     data: opm,
                     borderColor: ['#3b82f6', '#ef4444', '#10b981', '#8b5cf6', '#f97316'][oi % 5],
@@ -1145,24 +1161,25 @@ function renderCompareView() {
             }
         } catch (_) {}
 
-        // 缩略图3：R 控制图（极差）
+        // 缩略图3：R 控制图（极差）— cellRanges[o][p] = 测量员o在零件p的极差
         try {
             const rcCtx = document.getElementById(`cmp-rctrl-${i}`);
-            if (rcCtx && v.code !== 'INVALID') {
+            if (rcCtx && v.code !== 'INVALID' && r.cellRanges && r.cellRanges.length && r.control) {
                 const rctrlLbl = [];
                 const rctrlVals = [];
-                r.controlR.forEach((row, o) => {
+                r.cellRanges.forEach((row, o) => {
                     row.forEach((rv, j) => {
                         rctrlLbl.push(`${String.fromCharCode(65+o)}-${j+1}`);
                         rctrlVals.push(rv);
                     });
                 });
+                const ucl = r.control.UCL_R, cl = r.control.Rbar;
                 compareCharts.push(new Chart(rcCtx, {
                     type: 'line',
                     data: { labels: rctrlLbl, datasets: [
                         { label: 'R', data: rctrlVals, borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 2, showLine: false },
-                        { label: 'UCL', data: rctrlLbl.map(() => r.rangeUCL), borderColor: '#ef4444', borderDash: [4, 3], pointRadius: 0, borderWidth: 1 },
-                        { label: 'CL', data: rctrlLbl.map(() => r.rangeCL), borderColor: '#10b981', pointRadius: 0, borderWidth: 1 }
+                        { label: 'UCL', data: rctrlLbl.map(() => ucl), borderColor: '#ef4444', borderDash: [4, 3], pointRadius: 0, borderWidth: 1 },
+                        { label: 'CL', data: rctrlLbl.map(() => cl), borderColor: '#10b981', pointRadius: 0, borderWidth: 1 }
                     ] },
                     options: { responsive: true, maintainAspectRatio: false,
                         plugins: { legend: { display: false } },
@@ -1192,12 +1209,13 @@ function renderCompareView() {
     document.querySelectorAll('[data-delete]').forEach(b => {
         b.addEventListener('click', () => {
             const hid = b.getAttribute('data-delete');
-            if (!confirm('确定要删除该历史记录吗？')) return;
-            deleteHistory(hid);
-            historySelection.delete(hid);
-            renderHistoryList();
-            renderCompareView();
-            renderTrendView();
+            const h = getHistory().find(x => x.id == hid);
+            if (!h) return;
+            if (!confirm(`确定要删除「${h.name || '该批次'}」吗？`)) return;
+            deleteHistory(hid);  // 内部已处理 historySelection 清理
+            renderHistoryList();  // 同步右上角选中数量与历史列表
+            renderCompareView(); // 刷新对比面板
+            renderTrendView();    // 刷新趋势视图
         });
     });
 

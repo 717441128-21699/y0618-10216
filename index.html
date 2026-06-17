@@ -11,7 +11,7 @@
     <header class="header">
         <div class="container">
             <h1>MSA/Gauge R&amp;R 测量系统分析</h1>
-            <p class="subtitle">测量系统重复性与再现性分析工具 | AIAG标准</p>
+            <p class="subtitle">测量系统重复性与再现性分析工具 | AIAG第四版标准</p>
         </div>
     </header>
 
@@ -20,19 +20,19 @@
             <h2>1. 数据录入</h2>
             <div class="config-row">
                 <div class="form-group">
-                    <label for="operators">测量员数量</label>
+                    <label for="operators">测量员数量 (2-10)</label>
                     <input type="number" id="operators" min="2" max="10" value="3">
                 </div>
                 <div class="form-group">
-                    <label for="parts">零件数量</label>
-                    <input type="number" id="parts" min="2" max="50" value="10">
+                    <label for="parts">零件数量 (2-100)</label>
+                    <input type="number" id="parts" min="2" max="100" value="10">
                 </div>
                 <div class="form-group">
-                    <label for="trials">每个零件测量次数</label>
+                    <label for="trials">每个零件测量次数 (2-10)</label>
                     <input type="number" id="trials" min="2" max="10" value="3">
                 </div>
                 <div class="form-group">
-                    <label for="spec-tolerance">规格公差 (Tolerance)</label>
+                    <label for="spec-tolerance">规格公差 Tolerance</label>
                     <input type="number" id="spec-tolerance" step="any" placeholder="如 USL-LSL">
                 </div>
                 <div class="form-group">
@@ -50,11 +50,23 @@
             </div>
         </section>
 
+        <section class="card">
+            <h2>📋 历史分析记录 <span class="badge" id="history-count">0</span></h2>
+            <p class="muted" style="margin-bottom:14px;">自动保存在本地浏览器，方便不同批次对比；最多保存 20 条。</p>
+            <div id="history-list" class="history-list"></div>
+        </section>
+
         <section id="results" class="results hidden">
             <div class="card">
                 <h2>2. 量具 R&amp;R 结果摘要</h2>
                 <div id="summary" class="summary-grid"></div>
+                <div id="data-warning" class="data-warning hidden"></div>
                 <div id="decision" class="decision-box"></div>
+                <div class="action-row">
+                    <button id="save-result" class="btn btn-secondary">💾 保存本次分析</button>
+                    <button id="export-result" class="btn btn-primary">📤 导出报告文件(HTML)</button>
+                    <button id="print-report" class="btn btn-secondary">🖨 打印/PDF</button>
+                </div>
             </div>
 
             <div class="card">
@@ -81,7 +93,7 @@
 
             <div class="card chart-card">
                 <h2>6. 测量过程控制图</h2>
-                <h3>X-bar 控制图 (按零件分组)</h3>
+                <h3>X̄-bar 控制图</h3>
                 <div class="chart-container">
                     <canvas id="xbar-control-chart"></canvas>
                 </div>
@@ -92,23 +104,20 @@
             </div>
 
             <div class="card">
-                <h2>7. 区分度分析 (Number of Distinct Categories)</h2>
+                <h2>7. 区分度分析 (ndc)</h2>
                 <div id="ndc-result" class="ndc-result"></div>
             </div>
 
             <div class="card">
                 <h2>8. AIAG 标准报告</h2>
                 <div id="report" class="report"></div>
-                <div class="action-row">
-                    <button id="print-report" class="btn btn-primary">打印/导出报告</button>
-                </div>
             </div>
         </section>
     </main>
 
     <footer class="footer">
         <div class="container">
-            <p>MSA/Gauge R&amp;R Analysis Tool | Based on AIAG MSA 4th Edition</p>
+            <p>MSA/Gauge R&amp;R Analysis Tool | AIAG MSA 4th Edition | 数据仅存储于您的本地浏览器</p>
         </div>
     </footer>
 

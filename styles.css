@@ -597,3 +597,138 @@ body {
     border-color: #fecaca;
 }
 .h-btn.h-btn-danger:hover { background: #fee2e2; }
+
+.history-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.history-toolbar > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.history-item { grid-template-columns: auto 1fr auto; align-items: start; }
+.history-item.selected { background: #eff6ff; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+.history-item input[type=checkbox] {
+    width: 18px; height: 18px; margin-top: 2px; cursor: pointer;
+    accent-color: var(--primary-light);
+}
+.history-left { display: flex; gap: 10px; align-items: start; }
+
+/* 下拉菜单 */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    min-width: 240px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    margin-top: 4px;
+    overflow: hidden;
+}
+.dropdown-menu.show { display: block; }
+.dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    background: white;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    transition: background .15s;
+}
+.dropdown-item:hover { background: #f1f5f9; }
+
+/* 批次对比面板 */
+.compare-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+.compare-card {
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    background: #fafafa;
+    position: relative;
+}
+.compare-card.best { border-color: var(--success); background: #f0fdf4; }
+.compare-card.worst { border-color: var(--danger); background: #fef2f2; }
+.compare-card h4 {
+    font-size: 15px;
+    margin-bottom: 6px;
+    color: var(--text);
+    word-break: break-word;
+}
+.compare-card .c-sub { font-size: 12px; color: var(--text-light); margin-bottom: 12px; }
+.compare-card .c-metric {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 13px;
+}
+.compare-card .c-metric:last-child { border-bottom: none; }
+.compare-card .c-metric .c-label { color: var(--text-light); }
+.compare-card .c-metric .c-value { font-weight: 700; }
+.compare-card .c-verdict {
+    margin-top: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 13px;
+}
+.compare-card .c-verdict.pass { background:#dcfce7;color:var(--success); }
+.compare-card .c-verdict.marginal { background:#fef9c3;color:var(--warning); }
+.compare-card .c-verdict.fail { background:#fee2e2;color:var(--danger); }
+.compare-card .c-verdict.invalid { background:#e0e7ff;color:#4338ca; }
+.compare-tag {
+    position: absolute;
+    top: 8px; right: 8px;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+}
+.compare-tag.best { background: var(--success); color: white; }
+.compare-tag.worst { background: var(--danger); color: white; }
+
+/* 对比图 */
+.compare-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+.compare-chart-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    background: white;
+}
+.compare-chart-box h5 {
+    font-size: 13px;
+    color: var(--primary);
+    margin-bottom: 8px;
+}
+.compare-chart-box canvas { width: 100% !important; height: 220px !important; }
+
+.invalid-flag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #e0e7ff;
+    color: #4338ca;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    margin-left: 6px;
+}

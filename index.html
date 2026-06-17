@@ -6,12 +6,13 @@
     <title>MSA/Gauge R&R 测量系统分析工具</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
     <header class="header">
         <div class="container">
             <h1>MSA/Gauge R&amp;R 测量系统分析</h1>
-            <p class="subtitle">测量系统重复性与再现性分析工具 | AIAG第四版标准</p>
+            <p class="subtitle">测量系统重复性与再现性分析工具 | AIAG第四版标准 | 支持批次对比</p>
         </div>
     </header>
 
@@ -44,7 +45,9 @@
             <div id="data-entry" class="data-entry"></div>
 
             <div class="action-row">
-                <button id="load-sample" class="btn btn-secondary">加载示例数据</button>
+                <button id="load-sample" class="btn btn-secondary">📘 加载示例数据</button>
+                <button id="load-sample-lowvar" class="btn btn-secondary">📕 加载低差异样本</button>
+                <button id="load-same" class="btn btn-secondary">📗 加载全相同数据</button>
                 <button id="clear-data" class="btn btn-secondary">清空数据</button>
                 <button id="calculate" class="btn btn-primary">计算分析</button>
             </div>
@@ -52,8 +55,22 @@
 
         <section class="card">
             <h2>📋 历史分析记录 <span class="badge" id="history-count">0</span></h2>
-            <p class="muted" style="margin-bottom:14px;">自动保存在本地浏览器，方便不同批次对比；最多保存 20 条。</p>
+            <div class="history-toolbar">
+                <p class="muted">勾选 2-3 条记录点击"📊 批次对比"，可并排对比关键指标与趋势。</p>
+                <div>
+                    <button id="compare-history" class="btn btn-primary" disabled>📊 批次对比 (<span id="sel-count">0</span>)</button>
+                    <button id="clear-selection" class="btn btn-secondary" disabled>取消选择</button>
+                </div>
+            </div>
             <div id="history-list" class="history-list"></div>
+        </section>
+
+        <section id="compare-panel" class="card hidden">
+            <h2>🔍 批次对比视图 <span id="compare-badge" class="badge"></span>
+                <button id="close-compare" class="h-btn h-btn-danger" style="float:right;">✕ 关闭</button>
+            </h2>
+            <p class="muted" style="margin-bottom:16px;">横向对比各批次的 GRR、ndc、EV、AV、PV 与最终判定，一眼识别批次波动。</p>
+            <div id="compare-content"></div>
         </section>
 
         <section id="results" class="results hidden">
@@ -64,8 +81,14 @@
                 <div id="decision" class="decision-box"></div>
                 <div class="action-row">
                     <button id="save-result" class="btn btn-secondary">💾 保存本次分析</button>
-                    <button id="export-result" class="btn btn-primary">📤 导出报告文件(HTML)</button>
-                    <button id="print-report" class="btn btn-secondary">🖨 打印/PDF</button>
+                    <div class="dropdown">
+                        <button id="export-btn" class="btn btn-primary">📤 导出报告 ▾</button>
+                        <div class="dropdown-menu" id="export-menu">
+                            <button class="dropdown-item" data-type="html">🌐 完整HTML报告（含图表）</button>
+                            <button class="dropdown-item" data-type="csv">📊 Excel/CSV 数据包（4个文件）</button>
+                            <button class="dropdown-item" data-type="print">🖨 打印 / 另存为 PDF</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
